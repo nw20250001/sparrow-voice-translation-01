@@ -37,11 +37,18 @@
         #historyContainer::-webkit-scrollbar-track { background: #1f2937; }
         #historyContainer::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px;}
         #historyContainer::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        #apiKeyWarning { display: none; }
     </style>
 </head>
 <body class="bg-gray-900 text-gray-200 flex flex-col items-center min-h-screen p-4">
 
     <div class="w-full max-w-md mx-auto">
+        <!-- API Key Warning -->
+        <div id="apiKeyWarning" class="bg-yellow-800 border-l-4 border-yellow-500 text-yellow-200 p-4 rounded-lg mb-6 shadow-lg">
+            <p class="font-bold">請注意：尚未設定 API 金鑰</p>
+            <p class="text-sm">您需要一組 Google AI Gemini API 金鑰才能使用翻譯功能。請將金鑰貼入程式碼中的指定位置。</p>
+        </div>
+
         <!-- Translator Card -->
         <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 relative mb-6">
             <header class="flex justify-between items-center mb-6">
@@ -95,7 +102,8 @@
               status = document.getElementById('status'),
               micBtn = document.getElementById('micBtn'),
               micIconContainer = document.getElementById('micIconContainer'),
-              historyContainer = document.getElementById('historyContainer');
+              historyContainer = document.getElementById('historyContainer'),
+              apiKeyWarning = document.getElementById('apiKeyWarning');
 
         // 圖示 SVG
         const micIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-9 w-9" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" /><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.944A5.962 5.962 0 0110 5a5.962 5.962 0 015.668 3.944.5.5 0 01-.998.056A4.962 4.962 0 0010 6a4.962 4.962 0 00-4.668 2.999.5.5 0 11-.998-.055z" clip-rule="evenodd" /><path d="M10 15a4 4 0 004-4h-1.5a2.5 2.5 0 01-5 0H6a4 4 0 004 4z" /></svg>`,
@@ -114,13 +122,21 @@
         if (!SpeechRecognition) { status.textContent = "瀏覽器不支援語音功能"; micBtn.disabled = true; }
         
         // Gemini API 設定
-        const API_KEY = ""; // 如有需要，請填寫您的金鑰
+        const API_KEY = ""; // <<< AIzaSyCQZOnA26Vm2JVU-ZUpWESEa1dGaun4ajM >>>
+        
+        if (!API_KEY) {
+            apiKeyWarning.style.display = 'block';
+        }
+
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         
         async function translateText(text, sourceLang, targetLang) {
+            if (!API_KEY) {
+                return "錯誤：API 金鑰未設定。";
+            }
             const prompt = `Translate the following text from ${sourceLang} to ${targetLang}. Provide only the translated text, without any additional explanations or context.\n\nText: "${text}"\n\nTranslation:`;
             try {
-                let response, attempts = 0, maxAttempts = 5, delay = 1000;
+                let response, attempts = 0, maxAttempts = 3, delay = 1000;
                 while (attempts < maxAttempts) {
                     response = await fetch(API_URL, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -138,15 +154,28 @@
                     if (response.status === 429 || response.status >= 500) {
                         await new Promise(resolve => setTimeout(resolve, delay));
                         delay *= 2; attempts++;
-                    } else throw new Error(`API 請求失敗，狀態碼: ${response.status}`);
+                    } else {
+                        const errorBody = await response.json();
+                        console.error("API 請求錯誤:", errorBody);
+                        throw new Error(`API 請求失敗: ${errorBody.error?.message || response.status}`);
+                    }
                 }
                 if (!response.ok) throw new Error(`API 請求在 ${maxAttempts} 次嘗試後失敗。`);
                 const result = await response.json();
                 const candidate = result.candidates?.[0];
                 if (candidate && candidate.content?.parts?.[0]?.text) {
                     return candidate.content.parts[0].text.trim();
-                } else { console.error("API 回應結構異常:", result); return "翻譯時發生錯誤。"; }
-            } catch (error) { console.error('翻譯錯誤:', error); return "翻譯失敗，請檢查網路連線。"; }
+                } else if (candidate?.finishReason) {
+                     console.error("API 回應因安全設定或其他原因被阻擋:", candidate.finishReason, candidate.safetyRatings);
+                     return "翻譯內容可能不當，已被阻擋。";
+                } else {
+                     console.error("API 回應結構異常:", result);
+                     return "翻譯時發生未知錯誤。";
+                }
+            } catch (error) { 
+                console.error('翻譯錯誤:', error); 
+                return "翻譯失敗，請檢查網路連線或 API 金鑰。";
+            }
         }
         
         function speakText(text, lang) {
@@ -212,7 +241,11 @@
             
             translatedText.textContent = translatedResult;
             const speakLang = (currentMode === 'zh-to-en') ? 'en-US' : 'zh-TW';
-            speakText(translatedResult, speakLang);
+
+            // Don't speak error messages
+            if (!translatedResult.toLowerCase().includes('錯誤') && !translatedResult.toLowerCase().includes('失敗') && !translatedResult.toLowerCase().includes('阻擋')) {
+                speakText(translatedResult, speakLang);
+            }
 
             const now = new Date();
             const historyEntry = {
@@ -223,7 +256,7 @@
                 lang: speakLang
             };
             translationHistory.unshift(historyEntry);
-            if (translationHistory.length > 50) translationHistory.pop(); // 只保留最近50筆紀錄
+            if (translationHistory.length > 50) translationHistory.pop();
             renderHistory();
         }
 
@@ -298,3 +331,5 @@
     </script>
 </body>
 </html>
+
+
