@@ -3,333 +3,248 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>即時語音翻譯系統</title>
+    <title>即時語音翻譯機</title>
+    <!-- 引入 Tailwind CSS 以進行樣式設計 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', 'Noto Sans TC', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .pulse-red {
-            animation: pulse-red-animation 2s infinite;
-        }
-        @keyframes pulse-red-animation {
+        /* 錄音按鈕的脈衝動畫 */
+        @keyframes pulse {
             0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
             70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
-        .output-box { min-height: 120px; }
-        .lang-label {
-            position: absolute;
-            top: -12px;
-            left: 16px;
-            background-color: #1f2937; /* Match the card background */
-            padding: 0 8px;
-            font-size: 0.875rem;
-            color: #9ca3af;
+        .is-recording {
+            animation: pulse 2s infinite;
         }
-        .btn-transition {
-            transition: background-color 0.3s ease-in-out, transform 0.2s ease;
+        /* 頁面切換的淡入效果 */
+        .page {
+            display: none;
+            animation: fadeIn 0.5s;
         }
-        /* For custom scrollbar */
-        #historyContainer::-webkit-scrollbar { width: 6px; }
-        #historyContainer::-webkit-scrollbar-track { background: #1f2937; }
-        #historyContainer::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px;}
-        #historyContainer::-webkit-scrollbar-thumb:hover { background: #6b7280; }
-        #apiKeyWarning { display: none; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* 卡片樣式 */
+        .result-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 1rem;
+            padding: 1rem;
+            margin-top: 1rem;
+            min-height: 80px;
+        }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 flex flex-col items-center min-h-screen p-4">
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen font-sans p-4">
 
-    <div class="w-full max-w-md mx-auto">
-        <!-- API Key Warning -->
-        <div id="apiKeyWarning" class="bg-yellow-800 border-l-4 border-yellow-500 text-yellow-200 p-4 rounded-lg mb-6 shadow-lg">
-            <p class="font-bold">請注意：尚未設定 API 金鑰</p>
-            <p class="text-sm">您需要一組 Google AI Gemini API 金鑰才能使用翻譯功能。請將金鑰貼入程式碼中的指定位置。</p>
+    <!-- 頁面容器 -->
+    <div id="appContainer" class="w-full max-w-lg text-center">
+
+        <!-- 頁面 1: 儀表板主頁 -->
+        <div id="dashboardPage" class="page">
+            <h1 class="text-4xl md:text-5xl font-bold mb-4">即時語音翻譯機</h1>
+            <p class="text-lg text-gray-400 mb-12">將您的中文語音即時翻譯成流利的英文。</p>
+            <button id="goToTranslatorButton" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-full transition-transform duration-200 transform hover:scale-105 shadow-lg flex items-center justify-center mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="mr-3" viewBox="0 0 16 16">
+                    <path d="m10.468 1.584a.5.5 0 0 0-.832-.34L6.021 4.12A3.5 3.5 0 0 0 4.5 6.866v2.268a3.5 3.5 0 0 0 1.521 2.746l3.615 2.888a.5.5 0 0 0 .832-.34V1.584z"/>
+                    <path d="M16 8a7 7 0 1 1-14 0 7 7 0 0 1 14 0zM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0z"/>
+                </svg>
+                開啟語音翻譯功能
+            </button>
+            <p class="text-xs text-gray-600 mt-12">由 Gemini 模型提供翻譯支援</p>
         </div>
 
-        <!-- Translator Card -->
-        <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 relative mb-6">
-            <header class="flex justify-between items-center mb-6">
-                <h1 id="modeTitle" class="text-2xl font-bold text-white">中文 → 英文</h1>
-                <button id="toggleModeBtn" title="切換翻譯方向" class="p-2 rounded-full hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                </button>
-            </header>
-
-            <main class="space-y-6">
-                <div class="relative border border-gray-600 rounded-lg p-4 bg-gray-900 output-box">
-                    <span id="originalLangLabel" class="lang-label">原文 (中文)</span>
-                    <p id="originalText" class="text-gray-300"></p>
-                </div>
-                <div class="relative border border-gray-600 rounded-lg p-4 bg-gray-900 output-box">
-                    <span id="translatedLangLabel" class="lang-label">翻譯 (英文)</span>
-                    <p id="translatedText" class="text-blue-300 font-medium"></p>
-                </div>
-            </main>
+        <!-- 頁面 2: 翻譯功能頁面 -->
+        <div id="translatorPage" class="page">
+            <h1 class="text-3xl md:text-4xl font-bold mb-6">語音翻譯</h1>
             
-            <footer class="mt-8 flex flex-col items-center">
-                <div id="status" class="text-center text-blue-400 h-6 mb-4">點擊下方按鈕開始</div>
-                <button id="micBtn" class="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 focus:outline-none btn-transition">
-                    <div id="micIconContainer">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-9 w-9" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" /><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.944A5.962 5.962 0 0110 5a5.962 5.962 0 015.668 3.944.5.5 0 01-.998.056A4.962 4.962 0 0010 6a4.962 4.962 0 00-4.668 2.999.5.5 0 11-.998-.055z" clip-rule="evenodd" /><path d="M10 15a4 4 0 004-4h-1.5a2.5 2.5 0 01-5 0H6a4 4 0 004 4z" /></svg>
-                    </div>
-                </button>
-                <p class="text-center mt-6 text-gray-500 text-xs">由 Gemini AI 提供技術支援</p>
-            </footer>
-        </div>
+            <button id="recordButton" class="w-48 h-48 md:w-56 md:h-56 bg-sky-600 rounded-full flex flex-col items-center justify-center text-xl font-bold text-white select-none transition-all duration-300 ease-in-out transform focus:outline-none shadow-lg hover:bg-sky-500 active:scale-95 mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-mic-fill mb-2" viewBox="0 0 16 16">
+                    <path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z"/>
+                    <path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/>
+                </svg>
+                <span id="recordButtonText">按住說話</span>
+            </button>
 
-        <!-- History Card -->
-        <div id="historySection" class="bg-gray-800 rounded-2xl shadow-2xl p-6">
-            <h2 class="text-xl font-bold text-white mb-4">翻譯紀錄</h2>
-            <div id="historyContainer" class="max-h-64 overflow-y-auto space-y-3 pr-2">
-                <!-- Translation history will be inserted here -->
+            <div id="status" class="mt-6 text-lg text-yellow-400 h-8 font-medium"></div>
+
+            <!-- 結果顯示區 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 w-full">
+                <div class="result-card">
+                    <h2 class="font-bold text-lg text-gray-300 mb-2">您說的 (中文):</h2>
+                    <p id="originalText" class="text-gray-200"></p>
+                </div>
+                <div class="result-card">
+                    <h2 class="font-bold text-lg text-gray-300 mb-2">翻譯結果 (英文):</h2>
+                    <p id="translatedText" class="text-teal-300"></p>
+                </div>
             </div>
+            
+            <button id="backToDashboardButton" class="mt-8 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-full transition-transform duration-200 transform hover:scale-105 shadow-lg">
+                返回主頁
+            </button>
         </div>
     </div>
 
     <script>
-        // DOM 元素
-        const modeTitle = document.getElementById('modeTitle'),
-              toggleModeBtn = document.getElementById('toggleModeBtn'),
-              originalLangLabel = document.getElementById('originalLangLabel'),
-              translatedLangLabel = document.getElementById('translatedLangLabel'),
-              originalText = document.getElementById('originalText'),
-              translatedText = document.getElementById('translatedText'),
-              status = document.getElementById('status'),
-              micBtn = document.getElementById('micBtn'),
-              micIconContainer = document.getElementById('micIconContainer'),
-              historyContainer = document.getElementById('historyContainer'),
-              apiKeyWarning = document.getElementById('apiKeyWarning');
+        // --- DOM 元素 ---
+        const pages = document.querySelectorAll('.page');
+        const dashboardPage = document.getElementById('dashboardPage');
+        const translatorPage = document.getElementById('translatorPage');
+        const goToTranslatorButton = document.getElementById('goToTranslatorButton');
+        const backToDashboardButton = document.getElementById('backToDashboardButton');
+        const recordButton = document.getElementById('recordButton');
+        const recordButtonText = document.getElementById('recordButtonText');
+        const statusDiv = document.getElementById('status');
+        const originalTextDiv = document.getElementById('originalText');
+        const translatedTextDiv = document.getElementById('translatedText');
 
-        // 圖示 SVG
-        const micIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-9 w-9" viewBox="0 0 20 20" fill="currentColor"><path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" /><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.944A5.962 5.962 0 0110 5a5.962 5.962 0 015.668 3.944.5.5 0 01-.998.056A4.962 4.962 0 0010 6a4.962 4.962 0 00-4.668 2.999.5.5 0 11-.998-.055z" clip-rule="evenodd" /><path d="M10 15a4 4 0 004-4h-1.5a2.5 2.5 0 01-5 0H6a4 4 0 004 4z" /></svg>`,
-              stopIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" /></svg>`,
-              speakerIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3.102A6.9 6.9 0 003.102 10 6.9 6.9 0 0010 16.898 6.9 6.9 0 0016.898 10 6.9 6.9 0 0010 3.102zM1.102 10a8.9 8.9 0 018.9-8.9 8.9 8.9 0 018.9 8.9 8.9 8.9 0 01-8.9 8.9A8.9 8.9 0 011.102 10z" /><path d="M10 5.5a4.5 4.5 0 00-4.5 4.5H7A2.5 2.5 0 019.5 7.5v-2z" /></svg>`,
-              deleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+        // --- API & 狀態變數 ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let isRecording = false;
+        let englishVoices = [];
 
-        // 應用程式狀態
-        let currentMode = 'zh-to-en', isListening = false, translationHistory = [];
-        
-        // 語音 API
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition,
-              synthesis = window.speechSynthesis;
-        let recognition = null;
+        // --- 頁面導航 ---
+        const showPage = (pageId) => {
+            pages.forEach(page => page.style.display = 'none');
+            const targetPage = document.getElementById(pageId);
+            if (targetPage) targetPage.style.display = 'block';
+        };
 
-        if (!SpeechRecognition) { status.textContent = "瀏覽器不支援語音功能"; micBtn.disabled = true; }
-        
-        // Gemini API 設定
-        const API_KEY = ""; // <<< AIzaSyCQZOnA26Vm2JVU-ZUpWESEa1dGaun4ajM >>>
-        
-        if (!API_KEY) {
-            apiKeyWarning.style.display = 'block';
-        }
+        // --- 核心功能 ---
 
-        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
-        
-        async function translateText(text, sourceLang, targetLang) {
-            if (!API_KEY) {
-                return "錯誤：API 金鑰未設定。";
+        // 1. 初始化語音辨識
+        const setupSpeechRecognition = () => {
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'cmn-Hant-TW'; // 繁體中文(台灣)
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+
+                recognition.onstart = () => {
+                    isRecording = true;
+                    statusDiv.textContent = '請開始說話...';
+                    recordButton.classList.add('bg-red-600', 'is-recording');
+                    recordButton.classList.remove('bg-sky-600');
+                    recordButtonText.textContent = '聆聽中...';
+                };
+
+                recognition.onresult = (event) => {
+                    const speechResult = event.results[0][0].transcript;
+                    statusDiv.textContent = '辨識完成，正在翻譯...';
+                    originalTextDiv.textContent = speechResult;
+                    translatedTextDiv.textContent = '...';
+                    translateText(speechResult);
+                };
+
+                recognition.onend = () => {
+                    isRecording = false;
+                    recordButton.classList.remove('bg-red-600', 'is-recording');
+                    recordButton.classList.add('bg-sky-600');
+                    recordButtonText.textContent = '按住說話';
+                };
+                
+                recognition.onerror = (event) => {
+                    statusDiv.textContent = `語音辨識錯誤: ${event.error}`;
+                };
+
+            } else {
+                statusDiv.textContent = "抱歉，您的瀏覽器不支援語音辨識功能。";
             }
-            const prompt = `Translate the following text from ${sourceLang} to ${targetLang}. Provide only the translated text, without any additional explanations or context.\n\nText: "${text}"\n\nTranslation:`;
+        };
+
+        // 2. 翻譯文字 (使用 Gemini API)
+        const translateText = async (textToTranslate) => {
+            const apiKey = ""; // 將由環境自動提供
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const prompt = `Please translate the following Traditional Chinese text into English. Provide only the translated text, without any introductory phrases or explanations. Text: "${textToTranslate}"`;
+
             try {
-                let response, attempts = 0, maxAttempts = 3, delay = 1000;
-                while (attempts < maxAttempts) {
-                    response = await fetch(API_URL, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }],
-                            safetySettings: [
-                                { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
-                                { "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE" },
-                                { "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE" },
-                                { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE" }
-                            ]
-                        })
-                    });
-                    if (response.ok) break;
-                    if (response.status === 429 || response.status >= 500) {
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        delay *= 2; attempts++;
-                    } else {
-                        const errorBody = await response.json();
-                        console.error("API 請求錯誤:", errorBody);
-                        throw new Error(`API 請求失敗: ${errorBody.error?.message || response.status}`);
-                    }
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 請求失敗，狀態碼: ${response.status}`);
                 }
-                if (!response.ok) throw new Error(`API 請求在 ${maxAttempts} 次嘗試後失敗。`);
+
                 const result = await response.json();
-                const candidate = result.candidates?.[0];
-                if (candidate && candidate.content?.parts?.[0]?.text) {
-                    return candidate.content.parts[0].text.trim();
-                } else if (candidate?.finishReason) {
-                     console.error("API 回應因安全設定或其他原因被阻擋:", candidate.finishReason, candidate.safetyRatings);
-                     return "翻譯內容可能不當，已被阻擋。";
-                } else {
-                     console.error("API 回應結構異常:", result);
-                     return "翻譯時發生未知錯誤。";
-                }
-            } catch (error) { 
-                console.error('翻譯錯誤:', error); 
-                return "翻譯失敗，請檢查網路連線或 API 金鑰。";
+                const translatedText = result.candidates?.[0]?.content?.parts?.[0]?.text.trim() || "翻譯失敗。";
+                
+                statusDiv.textContent = '翻譯完成！';
+                translatedTextDiv.textContent = translatedText;
+                speakEnglish(translatedText);
+
+            } catch (error) {
+                console.error("翻譯錯誤:", error);
+                statusDiv.textContent = "翻譯時發生錯誤。";
+                translatedTextDiv.textContent = "N/A";
             }
-        }
+        };
         
-        function speakText(text, lang) {
-            if (synthesis.speaking) synthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = lang;
-            synthesis.speak(utterance);
-        }
+        // 3. 載入並篩選英文語音
+        const loadVoices = () => {
+            englishVoices = speechSynthesis.getVoices().filter(voice => voice.lang.startsWith('en-'));
+        };
 
-        function formatDate(date) {
-            const pad = (num) => num.toString().padStart(2, '0');
-            const YYYY = date.getFullYear();
-            const MM = pad(date.getMonth() + 1);
-            const DD = pad(date.getDate());
-            const hh = pad(date.getHours());
-            const mm = pad(date.getMinutes());
-            const ss = pad(date.getSeconds());
-            return `${YYYY}/${MM}/${DD} ${hh}:${mm}:${ss}`;
-        }
-
-        function renderHistory() {
-            historyContainer.innerHTML = '';
-            if (translationHistory.length === 0) {
-                historyContainer.innerHTML = `<p class="text-gray-500 text-center">此處會顯示您的翻譯紀錄。</p>`;
-                return;
-            }
-            translationHistory.forEach(item => {
-                const historyItem = document.createElement('div');
-                historyItem.className = 'bg-gray-700 p-3 rounded-lg flex items-start';
-                historyItem.innerHTML = `
-                    <div class="flex-grow">
-                        <p class="text-xs text-gray-400 mb-1">${item.timestamp}</p>
-                        <p class="text-sm text-gray-300">${item.original}</p>
-                        <p class="text-sm text-blue-300 font-semibold">${item.translated}</p>
-                    </div>
-                    <div class="flex flex-col space-y-2 ml-2">
-                        <button class="replay-btn p-2 rounded-full hover:bg-gray-600 transition-colors" title="重新播放" data-text="${item.translated.replace(/"/g, '&quot;')}" data-lang="${item.lang}">
-                            ${speakerIcon}
-                        </button>
-                        <button class="delete-btn p-2 rounded-full text-gray-400 hover:text-red-400 hover:bg-gray-600 transition-colors" title="刪除紀錄" data-id="${item.id}">
-                           ${deleteIcon}
-                        </button>
-                    </div>
-                `;
-                historyContainer.appendChild(historyItem);
-            });
-        }
-
-        function updateUIForMode() {
-            modeTitle.textContent = (currentMode === 'zh-to-en') ? '中文 → 英文' : '英文 → 中文';
-            originalLangLabel.textContent = (currentMode === 'zh-to-en') ? '原文 (中文)' : '原文 (英文)';
-            translatedLangLabel.textContent = (currentMode === 'zh-to-en') ? '翻譯 (英文)' : '翻譯 (中文)';
-            originalText.textContent = ''; translatedText.textContent = '';
-        }
-        
-        async function handleFinalTranscript(finalTranscript) {
-            if (!finalTranscript) return;
-
-            translatedText.textContent = '翻譯中...';
-            const targetLang = (currentMode === 'zh-to-en') ? 'English' : 'Traditional Chinese';
-            const sourceLang = (currentMode === 'zh-to-en') ? 'Traditional Chinese' : 'English';
-            const translatedResult = await translateText(finalTranscript, sourceLang, targetLang);
-            
-            translatedText.textContent = translatedResult;
-            const speakLang = (currentMode === 'zh-to-en') ? 'en-US' : 'zh-TW';
-
-            // Don't speak error messages
-            if (!translatedResult.toLowerCase().includes('錯誤') && !translatedResult.toLowerCase().includes('失敗') && !translatedResult.toLowerCase().includes('阻擋')) {
-                speakText(translatedResult, speakLang);
-            }
-
-            const now = new Date();
-            const historyEntry = {
-                id: now.getTime(),
-                timestamp: formatDate(now),
-                original: finalTranscript,
-                translated: translatedResult,
-                lang: speakLang
-            };
-            translationHistory.unshift(historyEntry);
-            if (translationHistory.length > 50) translationHistory.pop();
-            renderHistory();
-        }
-
-        function startListening() {
-            isListening = true;
-            toggleModeBtn.disabled = true;
-            micBtn.classList.remove('bg-blue-600');
-            micBtn.classList.add('bg-red-600', 'pulse-red');
-            micIconContainer.innerHTML = stopIcon;
-
-            recognition = new SpeechRecognition();
-            recognition.continuous = false;
-            recognition.interimResults = true;
-            recognition.lang = (currentMode === 'zh-to-en') ? 'cmn-Hant-TW' : 'en-US';
-            status.textContent = (currentMode === 'zh-to-en') ? '正在聆聽...' : 'Listening...';
-            
-            let finalTranscript = '';
-
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
+        // 4. 播放英文語音
+        const speakEnglish = (text) => {
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel(); // 取消先前的播放
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                
+                // 優先選擇美式或英式發音
+                const preferredVoice = englishVoices.find(voice => voice.name === 'Google US English') || englishVoices.find(voice => voice.lang === 'en-US') || englishVoices[0];
+                
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
                 }
-                originalText.textContent = finalTranscript + interimTranscript;
-            };
-            
-            recognition.onend = () => {
-                handleFinalTranscript(finalTranscript.trim());
-                stopListening();
-            };
-            recognition.onerror = (event) => { console.error('語音辨識錯誤:', event.error); status.textContent = `錯誤: ${event.error}`; stopListening(); };
-            recognition.start();
-        }
-
-        function stopListening() {
-            if (!isListening) return;
-            if (recognition) {
-                recognition.stop();
-                recognition = null;
+                
+                speechSynthesis.speak(utterance);
+            } else {
+                statusDiv.textContent = "抱歉，您的瀏覽器不支援語音合成功能。";
             }
-            isListening = false;
-            toggleModeBtn.disabled = false;
-            micBtn.classList.remove('bg-red-600', 'pulse-red');
-            micBtn.classList.add('bg-blue-600');
-            micIconContainer.innerHTML = micIcon;
-            status.textContent = '點擊下方按鈕開始';
-        }
+        };
 
-        // 事件監聽器
-        micBtn.addEventListener('click', () => { if (!isListening) startListening(); else stopListening(); });
-        toggleModeBtn.addEventListener('click', () => { if (isListening) return; currentMode = (currentMode === 'zh-to-en') ? 'en-to-zh' : 'zh-to-en'; updateUIForMode(); });
-        historyContainer.addEventListener('click', (event) => {
-            const targetButton = event.target.closest('button');
-            if (!targetButton) return;
-
-            if (targetButton.classList.contains('replay-btn')) {
-                speakText(targetButton.dataset.text, targetButton.dataset.lang);
-            } else if (targetButton.classList.contains('delete-btn')) {
-                const idToDelete = parseInt(targetButton.dataset.id, 10);
-                translationHistory = translationHistory.filter(item => item.id !== idToDelete);
-                renderHistory();
-            }
+        // --- 事件監聽器 ---
+        goToTranslatorButton.addEventListener('click', () => showPage('translatorPage'));
+        backToDashboardButton.addEventListener('click', () => {
+            if (isRecording) recognition.stop();
+            speechSynthesis.cancel();
+            showPage('dashboardPage');
         });
 
-        // 初始設定
-        synthesis.onvoiceschanged = () => { console.log("聲音引擎已載入。"); };
-        renderHistory();
+        recordButton.addEventListener('mousedown', () => {
+            if (!isRecording) recognition.start();
+        });
+        recordButton.addEventListener('mouseup', () => {
+            if (isRecording) recognition.stop();
+        });
+        recordButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!isRecording) recognition.start();
+        });
+        recordButton.addEventListener('touchend', () => {
+            if (isRecording) recognition.stop();
+        });
+
+
+        // --- 初始化 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupSpeechRecognition();
+            showPage('dashboardPage');
+            // 語音列表需要時間載入，我們預先載入
+            loadVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = loadVoices;
+            }
+        });
     </script>
 </body>
 </html>
-
-
