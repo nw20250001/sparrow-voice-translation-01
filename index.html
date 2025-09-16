@@ -1,347 +1,249 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>網路電台播放器</title>
+    <title>即時語音翻譯機</title>
+    <!-- 引入 Tailwind CSS 以進行樣式設計 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
+        /* 錄音按鈕的脈衝動畫 */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
-        .station-item {
-            transition: all 0.2s ease-in-out;
+        .is-recording {
+            animation: pulse 2s infinite;
         }
-        .station-item:hover, .station-item.playing {
-            transform: scale(1.03);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        /* 頁面切換的淡入效果 */
+        .page {
+            display: none;
+            animation: fadeIn 0.5s;
         }
-         .station-item.playing {
-            border-color: #3b82f6; /* Blue-500 */
-            background-color: #eff6ff; /* Blue-50 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        /* 卡片樣式 */
+        .result-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 1rem;
+            padding: 1rem;
+            margin-top: 1rem;
+            min-height: 80px;
         }
     </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex items-center justify-center min-h-screen p-4">
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen font-sans p-4">
 
-    <div class="w-full max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
-        <div class="p-6 md:p-8">
-            <h1 class="text-3xl font-bold text-center mb-2 text-blue-600 dark:text-blue-400">網路電台播放器</h1>
-            <p class="text-center text-gray-500 dark:text-gray-400 mb-6">選擇一個電台開始收聽</p>
+    <!-- 頁面容器 -->
+    <div id="appContainer" class="w-full max-w-lg text-center">
 
-            <!-- Now Playing Section -->
-            <div id="player" class="bg-gray-50 dark:bg-gray-700 rounded-xl p-6 mb-6 text-center">
-                 <div id="now-playing-artwork-container" class="mb-4">
-                    <i class="fas fa-broadcast-tower text-6xl text-gray-300 dark:text-gray-500"></i>
-                </div>
-                <h2 id="now-playing" class="text-xl font-semibold truncate">未選擇電台</h2>
-                <p id="player-status" class="text-sm text-gray-500 dark:text-gray-400">閒置中</p>
-
-                <!-- Controls -->
-                <div class="flex items-center justify-center space-x-6 mt-6">
-                    <button id="prev-btn" class="p-3 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fas fa-backward-step fa-lg"></i>
-                    </button>
-                    <button id="play-pause-btn" class="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl hover:bg-blue-700 transition-transform transform hover:scale-110 shadow-lg">
-                        <i id="play-pause-icon" class="fas fa-play"></i>
-                    </button>
-                     <button id="next-btn" class="p-3 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fas fa-forward-step fa-lg"></i>
-                    </button>
-                </div>
-
-                <!-- Volume Control -->
-                <div class="flex items-center justify-center space-x-2 mt-6 w-4/5 mx-auto">
-                    <i class="fas fa-volume-down text-gray-500"></i>
-                    <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600">
-                    <i class="fas fa-volume-up text-gray-500"></i>
-                </div>
-            </div>
-
-            <!-- Station List -->
-             <div>
-                <h3 class="text-lg font-semibold mb-4">電台列表</h3>
-                <div id="station-list" class="space-y-3 max-h-60 overflow-y-auto pr-2">
-                    <!-- Stations will be dynamically inserted here -->
-                </div>
-            </div>
-
-            <!-- Add Station -->
-            <div class="mt-6">
-                <h3 class="text-lg font-semibold mb-4">新增電台</h3>
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <input type="text" id="station-name-input" placeholder="電台名稱" class="flex-grow p-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <input type="url" id="station-url-input" placeholder="串流網址 (URL)" class="flex-grow p-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <button id="add-station-btn" class="bg-green-500 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors">新增</button>
-                </div>
-                 <p id="error-message" class="text-red-500 text-sm mt-2"></p>
-            </div>
+        <!-- 頁面 1: 儀表板主頁 -->
+        <div id="dashboardPage" class="page">
+            <h1 class="text-4xl md:text-5xl font-bold mb-4">即時語音翻譯機</h1>
+            <p class="text-lg text-gray-400 mb-12">將您的中文語音即時翻譯成流利的英文。</p>
+            <button id="goToTranslatorButton" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-full transition-transform duration-200 transform hover:scale-105 shadow-lg flex items-center justify-center mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="mr-3" viewBox="0 0 16 16">
+                    <path d="m10.468 1.584a.5.5 0 0 0-.832-.34L6.021 4.12A3.5 3.5 0 0 0 4.5 6.866v2.268a3.5 3.5 0 0 0 1.521 2.746l3.615 2.888a.5.5 0 0 0 .832-.34V1.584z"/>
+                    <path d="M16 8a7 7 0 1 1-14 0 7 7 0 0 1 14 0zM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0z"/>
+                </svg>
+                開啟語音翻譯功能
+            </button>
+            <p class="text-xs text-gray-600 mt-12">由 Gemini 模型提供翻譯支援</p>
         </div>
-        <audio id="audio-player" preload="none"></audio>
+
+        <!-- 頁面 2: 翻譯功能頁面 -->
+        <div id="translatorPage" class="page">
+            <h1 class="text-3xl md:text-4xl font-bold mb-6">語音翻譯</h1>
+            
+            <button id="recordButton" class="w-48 h-48 md:w-56 md:h-56 bg-sky-600 rounded-full flex flex-col items-center justify-center text-xl font-bold text-white select-none transition-all duration-300 ease-in-out transform focus:outline-none shadow-lg hover:bg-sky-500 active:scale-95 mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-mic-fill mb-2" viewBox="0 0 16 16">
+                    <path d="M5 3a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0V3z"/>
+                    <path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/>
+                </svg>
+                <span id="recordButtonText">按住說話</span>
+            </button>
+
+            <div id="status" class="mt-6 text-lg text-yellow-400 h-8 font-medium"></div>
+
+            <!-- 結果顯示區 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 w-full">
+                <div class="result-card">
+                    <h2 class="font-bold text-lg text-gray-300 mb-2">您說的 (中文):</h2>
+                    <p id="originalText" class="text-gray-200"></p>
+                </div>
+                <div class="result-card">
+                    <h2 class="font-bold text-lg text-gray-300 mb-2">翻譯結果 (英文):</h2>
+                    <p id="translatedText" class="text-teal-300"></p>
+                </div>
+            </div>
+            
+            <button id="backToDashboardButton" class="mt-8 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-full transition-transform duration-200 transform hover:scale-105 shadow-lg">
+                返回主頁
+            </button>
+        </div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const audioPlayer = document.getElementById('audio-player');
-            const playPauseBtn = document.getElementById('play-pause-btn');
-            const playPauseIcon = document.getElementById('play-pause-icon');
-            const volumeSlider = document.getElementById('volume-slider');
-            const nowPlaying = document.getElementById('now-playing');
-            const playerStatus = document.getElementById('player-status');
-            const stationList = document.getElementById('station-list');
-            const addStationBtn = document.getElementById('add-station-btn');
-            const stationNameInput = document.getElementById('station-name-input');
-            const stationUrlInput = document.getElementById('station-url-input');
-            const errorMessage = document.getElementById('error-message');
-            const prevBtn = document.getElementById('prev-btn');
-            const nextBtn = document.getElementById('next-btn');
+        // --- DOM 元素 ---
+        const pages = document.querySelectorAll('.page');
+        const dashboardPage = document.getElementById('dashboardPage');
+        const translatorPage = document.getElementById('translatorPage');
+        const goToTranslatorButton = document.getElementById('goToTranslatorButton');
+        const backToDashboardButton = document.getElementById('backToDashboardButton');
+        const recordButton = document.getElementById('recordButton');
+        const recordButtonText = document.getElementById('recordButtonText');
+        const statusDiv = document.getElementById('status');
+        const originalTextDiv = document.getElementById('originalText');
+        const translatedTextDiv = document.getElementById('translatedText');
 
-            let stations = [
-                { name: 'ICRT (台灣)', url: 'https://stream.icrt.com.tw/icrt-128k' },
-                { name: 'Hit FM 聯播網 (台北)', url: 'https://stream.rcs.revma.com/an1krh9g44puv' },
-                { name: 'Kiss Radio (台灣)', url: 'https://kissradio.kissonair.com:8001/kiss' },
-                { name: '寶島新聲 (台灣)', url: 'https://stream.superfm98-5.com.tw:8001/fm985' },
-                { name: 'BBC World Service', url: 'https://stream.live.vc.bbcmedia.co.uk/bbc_world_service' },
-                { name: 'K-POP Radio PN', url: 'https://stream.zeno.fm/f97b0u064hvvv' }
-            ];
+        // --- API & 狀態變數 ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let isRecording = false;
+        let englishVoices = [];
 
-            let currentStationIndex = -1;
+        // --- 頁面導航 ---
+        const showPage = (pageId) => {
+            pages.forEach(page => page.style.display = 'none');
+            const targetPage = document.getElementById(pageId);
+            if (targetPage) targetPage.style.display = 'block';
+        };
 
-            const saveStations = () => {
-                try {
-                    localStorage.setItem('radioStations', JSON.stringify(stations));
-                } catch (e) {
-                    console.error("無法儲存電台:", e);
-                }
-            };
+        // --- 核心功能 ---
 
-            const loadStations = () => {
-                try {
-                    const storedStations = localStorage.getItem('radioStations');
-                    if (storedStations) {
-                        stations = JSON.parse(storedStations);
-                    }
-                } catch (e) {
-                    console.error("無法載入電台:", e);
-                    // If loading fails, fall back to default
-                    stations = [
-                        { name: 'ICRT (台灣)', url: 'https://stream.icrt.com.tw/icrt-128k' },
-                        { name: 'Hit FM 聯播網 (台北)', url: 'https://stream.rcs.revma.com/an1krh9g44puv' },
-                        { name: 'Kiss Radio (台灣)', url: 'https://kissradio.kissonair.com:8001/kiss' },
-                    ];
-                }
-            };
+        // 1. 初始化語音辨識
+        const setupSpeechRecognition = () => {
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'cmn-Hant-TW'; // 繁體中文(台灣)
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
 
-            const renderStationList = () => {
-                stationList.innerHTML = '';
-                stations.forEach((station, index) => {
-                    const div = document.createElement('div');
-                    div.className = `station-item p-4 border border-gray-200 dark:border-gray-600 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700`;
-                    div.dataset.index = index;
-                    
-                    if (index === currentStationIndex) {
-                        div.classList.add('playing');
-                    }
+                recognition.onstart = () => {
+                    isRecording = true;
+                    statusDiv.textContent = '請開始說話...';
+                    recordButton.classList.add('bg-red-600', 'is-recording');
+                    recordButton.classList.remove('bg-sky-600');
+                    recordButtonText.textContent = '聆聽中...';
+                };
 
-                    div.innerHTML = `
-                        <span class="font-medium">${station.name}</span>
-                        <div class="flex items-center space-x-3">
-                           <div class="status-icon"></div>
-                           <button class="delete-station-btn text-red-500 hover:text-red-700 opacity-50 hover:opacity-100" data-index="${index}">
-                             <i class="fas fa-trash-alt"></i>
-                           </button>
-                        </div>
-                    `;
-                    stationList.appendChild(div);
-                });
+                recognition.onresult = (event) => {
+                    const speechResult = event.results[0][0].transcript;
+                    statusDiv.textContent = '辨識完成，正在翻譯...';
+                    originalTextDiv.textContent = speechResult;
+                    translatedTextDiv.textContent = '...';
+                    translateText(speechResult);
+                };
 
-                document.querySelectorAll('.station-item').forEach(item => {
-                    item.addEventListener('click', (e) => {
-                        if (e.target.closest('.delete-station-btn')) return;
-                        const index = parseInt(item.dataset.index);
-                        playStation(index);
-                    });
-                });
+                recognition.onend = () => {
+                    isRecording = false;
+                    recordButton.classList.remove('bg-red-600', 'is-recording');
+                    recordButton.classList.add('bg-sky-600');
+                    recordButtonText.textContent = '按住說話';
+                };
                 
-                document.querySelectorAll('.delete-station-btn').forEach(button => {
-                    button.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const index = parseInt(button.dataset.index);
-                        deleteStation(index);
-                    });
-                });
-            };
-            
-            const deleteStation = (index) => {
-                if (!confirm(`確定要刪除 "${stations[index].name}" 嗎？`)) return;
-                
-                if (index === currentStationIndex) {
-                    stopPlayback();
-                    currentStationIndex = -1;
-                } else if (index < currentStationIndex) {
-                    currentStationIndex--;
-                }
-                
-                stations.splice(index, 1);
-                saveStations();
-                renderStationList();
-                updateControls();
-            };
+                recognition.onerror = (event) => {
+                    statusDiv.textContent = `語音辨識錯誤: ${event.error}`;
+                };
 
-            const playStation = (index) => {
-                if (index < 0 || index >= stations.length) return;
-                
-                currentStationIndex = index;
-                const station = stations[index];
-                audioPlayer.src = station.url;
-                nowPlaying.textContent = station.name;
-                
-                document.querySelectorAll('.station-item').forEach(item => item.classList.remove('playing'));
-                const currentStationItem = document.querySelector(`.station-item[data-index="${index}"]`);
-                if (currentStationItem) {
-                   currentStationItem.classList.add('playing');
-                }
-
-                audioPlayer.play().catch(e => {
-                    console.error("播放錯誤:", e);
-                    updateStatus('錯誤', true);
-                });
-                updateControls();
-            };
-            
-            const stopPlayback = () => {
-                audioPlayer.pause();
-                audioPlayer.src = '';
-                nowPlaying.textContent = '未選擇電台';
-                updateStatus('閒置中');
-                playPauseIcon.classList.remove('fa-pause');
-                playPauseIcon.classList.add('fa-play');
-                 document.querySelectorAll('.station-item').forEach(item => item.classList.remove('playing'));
+            } else {
+                statusDiv.textContent = "抱歉，您的瀏覽器不支援語音辨識功能。";
             }
+        };
 
-            const togglePlayPause = () => {
-                if (audioPlayer.paused) {
-                    if (currentStationIndex === -1 && stations.length > 0) {
-                        playStation(0);
-                    } else if (currentStationIndex !== -1) {
-                         audioPlayer.play().catch(e => {
-                            console.error("播放錯誤:", e);
-                            updateStatus('錯誤', true);
-                        });
-                    }
-                } else {
-                    audioPlayer.pause();
+        // 2. 翻譯文字 (使用 Gemini API)
+        const translateText = async (textToTranslate) => {
+            const apiKey = ""; // 將由環境自動提供
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const prompt = `Please translate the following Traditional Chinese text into English. Provide only the translated text, without any introductory phrases or explanations. Text: "${textToTranslate}"`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 請求失敗，狀態碼: ${response.status}`);
                 }
-            };
 
-            const updateStatus = (text, isError = false) => {
-                playerStatus.textContent = text;
-                playerStatus.classList.toggle('text-red-500', isError);
-                playerStatus.classList.toggle('text-gray-500', !isError);
+                const result = await response.json();
+                const translatedText = result.candidates?.[0]?.content?.parts?.[0]?.text.trim() || "翻譯失敗。";
                 
-                const currentStationItem = document.querySelector(`.station-item.playing .status-icon`);
-                 if(currentStationItem) {
-                    if (text === '播放中...' || text === '緩衝中...') {
-                        currentStationItem.innerHTML = `<div class="loader"></div>`;
-                    } else if (isError) {
-                        currentStationItem.innerHTML = `<i class="fas fa-exclamation-circle text-red-500"></i>`;
-                    } else {
-                        currentStationItem.innerHTML = '';
-                    }
-                 }
-            };
-            
-            const updateControls = () => {
-                prevBtn.disabled = currentStationIndex <= 0;
-                nextBtn.disabled = currentStationIndex >= stations.length - 1;
-            };
+                statusDiv.textContent = '翻譯完成！';
+                translatedTextDiv.textContent = translatedText;
+                speakEnglish(translatedText);
 
-            playPauseBtn.addEventListener('click', togglePlayPause);
-            
-            prevBtn.addEventListener('click', () => {
-                if (currentStationIndex > 0) {
-                    playStation(currentStationIndex - 1);
-                }
-            });
+            } catch (error) {
+                console.error("翻譯錯誤:", error);
+                statusDiv.textContent = "翻譯時發生錯誤。";
+                translatedTextDiv.textContent = "N/A";
+            }
+        };
+        
+        // 3. 載入並篩選英文語音
+        const loadVoices = () => {
+            englishVoices = speechSynthesis.getVoices().filter(voice => voice.lang.startsWith('en-'));
+        };
 
-            nextBtn.addEventListener('click', () => {
-                if (currentStationIndex < stations.length - 1) {
-                    playStation(currentStationIndex + 1);
-                }
-            });
-
-            audioPlayer.addEventListener('play', () => {
-                playPauseIcon.classList.remove('fa-play');
-                playPauseIcon.classList.add('fa-pause');
-                updateStatus('播放中...');
-            });
-
-            audioPlayer.addEventListener('pause', () => {
-                playPauseIcon.classList.remove('fa-pause');
-                playPauseIcon.classList.add('fa-play');
-                updateStatus('已暫停');
-            });
-            
-            audioPlayer.addEventListener('waiting', () => {
-                updateStatus('緩衝中...');
-            });
-            
-            audioPlayer.addEventListener('playing', () => {
-                updateStatus('播放中...');
-            });
-
-            audioPlayer.addEventListener('error', () => {
-                updateStatus('無法載入串流', true);
-            });
-
-            volumeSlider.addEventListener('input', (e) => {
-                audioPlayer.volume = e.target.value;
-            });
-            
-            addStationBtn.addEventListener('click', () => {
-                const name = stationNameInput.value.trim();
-                const url = stationUrlInput.value.trim();
-                errorMessage.textContent = '';
+        // 4. 播放英文語音
+        const speakEnglish = (text) => {
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel(); // 取消先前的播放
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
                 
-                if (!name || !url) {
-                    errorMessage.textContent = '電台名稱和網址不能為空。';
-                    return;
+                // 優先選擇美式或英式發音
+                const preferredVoice = englishVoices.find(voice => voice.name === 'Google US English') || englishVoices.find(voice => voice.lang === 'en-US') || englishVoices[0];
+                
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
                 }
                 
-                try {
-                    new URL(url);
-                } catch (_) {
-                    errorMessage.textContent = '請輸入有效的網址。';
-                    return;
-                }
-                
-                stations.push({ name, url });
-                saveStations();
-                renderStationList();
-                stationNameInput.value = '';
-                stationUrlInput.value = '';
-                updateControls();
-            });
+                speechSynthesis.speak(utterance);
+            } else {
+                statusDiv.textContent = "抱歉，您的瀏覽器不支援語音合成功能。";
+            }
+        };
 
-            // Initial setup
-            loadStations();
-            renderStationList();
-            updateControls();
-            audioPlayer.volume = volumeSlider.value;
+        // --- 事件監聽器 ---
+        goToTranslatorButton.addEventListener('click', () => showPage('translatorPage'));
+        backToDashboardButton.addEventListener('click', () => {
+            if (isRecording) recognition.stop();
+            speechSynthesis.cancel();
+            showPage('dashboardPage');
+        });
+
+        recordButton.addEventListener('mousedown', () => {
+            if (!isRecording) recognition.start();
+        });
+        recordButton.addEventListener('mouseup', () => {
+            if (isRecording) recognition.stop();
+        });
+        recordButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!isRecording) recognition.start();
+        });
+        recordButton.addEventListener('touchend', () => {
+            if (isRecording) recognition.stop();
+        });
+
+
+        // --- 初始化 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupSpeechRecognition();
+            showPage('dashboardPage');
+            // 語音列表需要時間載入，我們預先載入
+            loadVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = loadVoices;
+            }
         });
     </script>
 </body>
